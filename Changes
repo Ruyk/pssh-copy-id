@@ -1,0 +1,6 @@
+Revision history for Perl extension Net::SSH::CopyId.
+
+0.01  Thu Jul 16 18:20:31 2009
+	- original version; created by h2xs 1.23 with options
+		-XA -n Net::SSH::CopyId
+

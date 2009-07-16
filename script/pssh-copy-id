@@ -1,0 +1,291 @@
+#!/usr/bin/perl 
+# Ruym'an Reyes Castro
+# pssh-copy-id
+#
+#
+#  Script that copies a public key to multiple remote servers
+#  V 1.4:
+#   * Correct overriding of login method
+#   * Check if key exist before adding (Not sure if it works on all kind of environments)
+#   * More debug info 
+#
+#  V 1.3:
+#   * Overriding login method so now can connect to machines without password
+#   * Smaller remote shell script
+#
+#  V 1.2 :
+#   * Using Net::SSH::Expect
+#   * Testing if .ssh/config exists before getting config
+#   * Setting a default value to pubkey_file
+#   * remote authorized_keys files always exists
+#   * Only connect once (Using a remote shell script to check for metakey)
+#
+#
+
+use strict;
+use Carp;
+
+use Net::SSH::Expect;
+use Term::ReadPassword;
+use Getopt::Long;
+use Pod::Usage;
+
+# In case something goes mad, set this to > 0;
+my $DEBUG = 0;
+
+# Important data...
+my $pubkey_file;
+my $user;
+my $nopassword = 0;
+my $pass = '';
+
+
+# Get parameters
+GetOptions(
+	'i=s' => \$pubkey_file, 
+	'l=s' => \$user,
+	'u=s' => \$user,
+   'P'   => \$nopassword,
+	'v'   => \$DEBUG,
+	'usage' => \&usage,
+) or croak usage();
+
+# The last arguments should be the hostnames
+#
+
+usage() unless(@ARGV);
+
+my @hosts = @ARGV;
+
+# Defaults to environment
+$user = $ENV{"USER"} unless $user;
+# check if a different user is defined in the ~/.ssh/config file
+my %config;
+%config = get_users_from_config("$ENV{HOME}/.ssh/config") if (-d "$ENV{HOME}/.ssh/config");
+
+
+# Get the password (using a secure way :)
+$pass = read_password('password: ') unless $nopassword;
+
+# Load the file into a variable
+#
+my $key;
+
+# pubkey_file defaults to id_rsa.pub
+$pubkey_file = "$ENV{HOME}/.ssh/id_rsa.pub" unless ($pubkey_file);
+# Check for correct extension
+$pubkey_file .= '.pub' unless $pubkey_file =~ /\.pub$/;
+# File exists and its readable
+croak "Error: define an identity file\n" unless ($pubkey_file && -r $pubkey_file);
+
+warn "~~~~~~~~~~ reading id file $pubkey_file\n" if ($DEBUG);
+$key = slurp($pubkey_file);
+warn "~~~~~~~~~~ reading id file done \n" if ($DEBUG);
+
+# Do the magic...
+for (@hosts) {
+  my ($user, $host) = ($user, $_);
+
+  # check if a different user was specified for this host
+  ($user, $host) = ($1, $2) if /(\w+)\@(.+)/;
+
+  # check if a different user was specified in the config file
+  $user =  $config{$host}{user} || $user;
+
+  print "Sending key $pubkey_file to $host as $user \n";
+
+  warn "~~~ Making ssh object ($host, user => $user) ~~~~ \n" if ($DEBUG);
+  my $ssh = Net::SSH::Expect->new(
+		host => $host,
+		password => $pass,
+		user => $user,
+		raw_pty => 1,
+		no_terminal => 1,
+	);
+  warn "~~~ Trying to log you on $host as $user ... \n" if ($DEBUG);
+
+  # Maybe a key already exists
+ # $ssh->run_ssh() or die "SSH process couldn't start: $!";
+  print " --> Waiting for password \n";
+  $ssh->login() or croak " SSH Process couldn't start : $!";
+# login($ssh);
+  warn "~~~ Logged to: $host as $user \n" if ($DEBUG);
+  # Check if the key is already published
+  my $metakey = quotemeta($key);
+  # We're assuming that you have at least sh on the remote machine
+  my $command = <<"CHECK_KEY";
+umask 077;
+mkdir -p .ssh;
+touch .ssh/authorized_keys;
+grep -c "$metakey" .ssh/authorized_keys &> /dev/null;
+if [ \$? ]; then
+        echo $metakey >> .ssh/authorized_keys;
+fi
+CHECK_KEY
+
+	print " Command $command " if ($DEBUG);
+
+  my $stdout = $ssh->exec($command);
+  
+  warn "Output: $stdout \n" if ($stdout);
+
+  $ssh->close();
+  print "The key has been installed in $host. Try logging with 'ssh $host'\n";
+}
+
+# ************ Some support subroutines...
+sub get_users_from_config {
+  my $configfile = shift;
+
+  my $config = slurp($configfile);
+
+  $config =~ s/\n\s*#.*//g;
+  $config =~ s/^\s*$//;
+
+  my @config = split /\s*Host\s+/, $config;
+  shift @config;
+
+  return  map { parse_entry($_) }  @config;
+
+}
+
+sub parse_entry {
+  my $entry = shift;
+
+  my @entry = split /\n/, $entry;
+  my $alias = shift @entry;
+  my @alias = split /\s+/, $alias;
+
+  my %config = map { split(/[ \t]+/, $_, 2) } @entry;
+
+  map { ($_, \%config) } @alias;
+
+}
+
+sub slurp {
+  my $file = shift;
+
+  open (my $fh, "<", $file);
+  local $/ = undef;
+  my $input = <$fh>;
+  close $fh;
+
+  return $input;
+}
+
+sub usage {
+	print <<"END_ERR";
+	Incorrect usage, should be:
+	pssh-copy-id [-i pubkey_file] [-l|u user] host1 ... hostN
+END_ERR
+	exit();
+}
+
+sub man {
+	pod2usage(-exitval => 1, -verbose => 2);
+}
+
+
+package Net::SSH::Expect;
+
+sub login {
+
+    my Net::SSH::Expect $self = shift;
+
+	# setting the default values for the parameters
+    my ($login_prompt, $password_prompt, $test_success) = ( qr/ogin:\s*$/, qr/[Pp]assword.*?:|[Pp]assphrase.*?:/, 0);
+	
+	# attributing the user defined values
+	if (@_ == 2 || @_ == 3) {
+		$login_prompt = shift;
+		$password_prompt = shift;
+	}
+	if (@_ == 1) {
+		$test_success = shift;
+	}
+
+	my $user = $self->{user};
+	my $password = $self->{password};
+	my $timeout = $self->{timeout};
+	my $t = $self->{terminator};
+
+	croak(ILLEGAL_STATE . " field 'user' is not set.") unless $user;
+	croak(ILLEGAL_STATE . " field 'password' is not set.") unless $password;
+
+	# spawns the ssh process if this wasn't done yet
+	if (! defined($self->{expect})) {
+		$self->run_ssh() or croak SSH_PROCESS_ERROR . " Couldn't start ssh: $!\n";
+	}
+
+	my $exp = $self->get_expect();
+
+	# loggin in
+	$self->_sec_expect($timeout,
+		[ qr/\(yes\/no\)\?\s*$/ => sub { $exp->send("yes$t"); exp_continue; } ],
+		[ $password_prompt		=> sub { $exp->send("$password$t"); } ],
+		[ qr/\$/		=> sub { print " Logged withouth password \n"; print "--> ".$self->peek()."\n"; } ],
+		[ $login_prompt         => sub { $exp->send("$user$t"); exp_continue; } ],
+		[ qr/REMOTE HOST IDEN/  => sub { print "FIX: .ssh/known_hosts\n"; exp_continue; } ],
+		[ qr/ssh:/ => sub { print "SSH Error: ".$self->peek()."\n"; croak "SSH Error";} ],
+		[ timeout => sub 
+			{ 
+				croak SSH_AUTHENTICATION_ERROR . " Login timed out. " .
+				"The input stream currently has the contents bellow: " .
+				$self->peek() if (not $self->peek() =~ qr/$/);
+				print " Timeout " if ($DEBUG);
+			} 
+		]
+	);
+	# verifying if we failed to logon
+	if ($test_success) {
+		$self->_sec_expect($timeout, 
+			[ $password_prompt  => 			
+				sub { 
+					my $error = $self->peek();
+					croak(SSH_AUTHENTICATION_ERROR . " Error: Bad password [$error]");
+				}
+			]
+		);
+	}
+	print " Exit OK \n" if ($DEBUG);
+   	# swallows any output the server wrote to my input stream after loging in	
+	my $output = $self->read_all(1);
+	print "--->: ".$output."\n" if ($DEBUG);
+	return 1;
+}
+
+
+__END__
+
+=head1 SYNOPSIS
+
+	pssh-copy-id [-i pub_file] [-l|u username] host1 host2 ... hostN 
+	pssh-copy-id [-i pub_file] [-l|u username] name1@host1 name2@host2 ... nameN@hostN 
+
+=head1 OPTIONS
+
+Options
+
+=over
+
+=item * C<-i pub_file>   
+
+File where the public key reside, default $HOME/.ssh/id_rsa.pub
+
+=item * C<-l username>
+
+Same as -u, compatibility with ssh options.
+
+=item * C<-u username>
+
+Remote username (must be the same for all the machines)
+
+=item * C<-v> verbose
+
+=back
+
+=head1 AUTHOR
+
+Ruyman Reyes Castro, L<rreyes@ull.es>
+
+Thanks to Casiano Rodriguez-Leon for the idea
