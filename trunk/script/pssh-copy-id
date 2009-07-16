@@ -29,6 +29,7 @@ use Net::SSH::Expect;
 use Term::ReadPassword;
 use Getopt::Long;
 use Pod::Usage;
+use Net::HostLanguage;
 
 # In case something goes mad, set this to > 0;
 my $DEBUG = 0;
@@ -55,7 +56,14 @@ GetOptions(
 
 usage() unless(@ARGV);
 
+my ($cluster, $method) = parse_configfile();
+
 my @hosts = @ARGV;
+my $set = Set::Scalar->new();
+
+$set += translate('', $_, $cluster, $method) for @hosts;
+
+@hosts = $set->members();
 
 # Defaults to environment
 $user = $ENV{"USER"} unless $user;
@@ -188,6 +196,7 @@ sub man {
 
 package Net::SSH::Expect;
 
+no warnings 'redefine';
 sub login {
 
     my Net::SSH::Expect $self = shift;
