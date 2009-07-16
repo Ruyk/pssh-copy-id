@@ -1,0 +1,7 @@
+Changes
+Makefile.PL
+MANIFEST
+README
+t/Net-SSH-CopyId.t
+lib/Net/SSH/CopyId.pm
+script/pssh-copy-id
