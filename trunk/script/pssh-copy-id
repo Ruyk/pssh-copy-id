@@ -118,7 +118,7 @@ umask 077;
 mkdir -p .ssh;
 touch .ssh/authorized_keys;
 grep -c "$metakey" .ssh/authorized_keys &> /dev/null;
-if [ \$? ]; then
+if [ ! \$? ]; then
         echo $metakey >> .ssh/authorized_keys;
 fi
 CHECK_KEY
