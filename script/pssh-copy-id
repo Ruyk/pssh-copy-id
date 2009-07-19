@@ -38,7 +38,7 @@ my $DEBUG = 0;
 my $pubkey_file;
 my $user;
 my $nopassword = 0;
-my $pass = '';
+my $pass = "\n";
 
 
 # Get parameters
@@ -114,7 +114,6 @@ for (@hosts) {
 
   # Maybe a key already exists
  # $ssh->run_ssh() or die "SSH process couldn't start: $!";
-  print " --> Waiting for password \n";
   $ssh->login() or croak " SSH Process couldn't start : $!";
 # login($ssh);
   warn "~~~ Logged to: $host as $user \n" if ($DEBUG);
@@ -128,6 +127,8 @@ touch .ssh/authorized_keys;
 grep -c "$metakey" .ssh/authorized_keys &> /dev/null;
 if [ ! \$? ]; then
         echo $metakey >> .ssh/authorized_keys;
+else
+  echo Key is already installed. Skipping
 fi
 CHECK_KEY
 
@@ -135,10 +136,10 @@ CHECK_KEY
 
   my $stdout = $ssh->exec($command);
   
-  warn "Output: $stdout \n" if ($stdout);
+  warn "$host: $stdout \n" if ($stdout);
 
   $ssh->close();
-  print "The key has been installed in $host. Try logging with 'ssh $host'\n";
+  print "Try logging with 'ssh $host'\n";
 }
 
 # ************ Some support subroutines...
