@@ -4,6 +4,7 @@ use ExtUtils::MakeMaker;
 # See lib/ExtUtils/MakeMaker.pm for details of how to influence
 # the contents of the Makefile that is written.
 
+my $MACHINES = $ENV{MACHINES} || '127.0.0.1 127.0.0.2';
 my @exe_files = map { "script/$_" } qw{pssh-copy-id};
 WriteMakefile(
     NAME              => 'Net::SSH::CopyId',
@@ -14,8 +15,6 @@ WriteMakefile(
       (ABSTRACT_FROM  => 'lib/Net/SSH/CopyId.pm', # retrieve abstract from module
        AUTHOR         => 'Ruymán Reyes <namiurtf@gmail.com>') : ()),
 );
-
-my $MACHINES = $ENV{MACHINES} || '127.0.0.1 127.0.0.2';
 
 sub MY::postamble {
 
