@@ -1,1 +1,2 @@
+export DEVELOPER=casiano
 export PERL5LIB=$PERL5LIB:`pwd`/lib:/home/pp2/src/perl/net-parscp/lib
