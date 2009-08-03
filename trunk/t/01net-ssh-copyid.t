@@ -7,19 +7,38 @@
 
 use warnings;
 use strict;
-use Test::More tests => 2;
-BEGIN { use_ok('Net::SSH::CopyId') };
+use Test::More tests => 6;
+BEGIN { use_ok('Net::SSH::CopyId');
+	use_ok('Net::SSH::Expect');
+	use_ok('Pod::Usage');
+	use_ok('Net::HostLanguage');
+ };
 
 #########################
 
 SKIP: {
-  skip("Developer test", 1) unless ($ENV{DEVELOPER} && -x "script/pssh-copy-id" && ($^O =~ /nux$/));
+#  skip("Developer test", 1) unless ($ENV{DEVELOPER} && -x "script/pssh-copy-id" && ($^O =~ /nux$/));
+
+	  skip("Developer test", 1) unless (-e $ENV{"HOME"}."/.ssh/id_dsa");
 
      my $output = `script/pssh-copy-id -P -i ~/.ssh/id_dsa 127.0.0.1 2>&1`;
      my $ok = $output =~ m{Sending key /home/.+/.ssh/id_dsa.pub to 127.0.0.1 as .+}s;
      ok($ok, 'Very simple smoke test');
 
+
 }
+
+
+SKIP: {
+	  skip("RSA tests", 1) unless (-e $ENV{"HOME"}."/.ssh/id_rsa");
+ my    $output = `script/pssh-copy-id -P -i ~/.ssh/id_rsa 127.0.0.1 localhost 2>&1`;
+ my    $ok = $output =~ m{Sending key /home/.+/.ssh/id_rsa.pub to 127.0.0.1 as .+}s;
+     ok($ok, 'Testing multiple destinations');
+
+
+}
+
+
 
 
 
